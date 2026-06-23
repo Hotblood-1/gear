@@ -216,6 +216,8 @@ async def seed():
     await db.orders.create_index("id", unique=True)
     await db.discount_codes.create_index("code", unique=True)
     await db.otps.create_index("expires_at", expireAfterSeconds=0)
+    await db.otp_requests.create_index("created_at")
+    await db.login_attempts.create_index("identifier")
 
     # Admin
     admin_email = os.environ["ADMIN_EMAIL"].lower()
@@ -259,10 +261,21 @@ async def seed():
 # Auth endpoints
 # ---------------------------------------------------------------------------
 @api.post("/auth/customer/request-otp")
-async def request_otp(payload: CustomerOTPRequest):
+async def request_otp(payload: CustomerOTPRequest, request: Request):
     phone = payload.phone.strip()
-    if not phone or len(phone) < 10:
-        raise HTTPException(status_code=400, detail="Invalid phone number")
+    if not phone.isdigit() or len(phone) != 10:
+        raise HTTPException(status_code=400, detail="Invalid phone number (must be 10 digits)")
+
+    # Rate limit: max 3 OTP requests per phone in 10 minutes
+    ten_min_ago = datetime.now(timezone.utc) - timedelta(minutes=10)
+    recent = await db.otp_requests.count_documents({
+        "phone": phone,
+        "created_at": {"$gte": ten_min_ago.isoformat()},
+    })
+    if recent >= 3:
+        raise HTTPException(status_code=429, detail="Too many OTP requests. Try again later.")
+    await db.otp_requests.insert_one({"phone": phone, "created_at": now_iso()})
+
     otp = "".join(random.choices(string.digits, k=6))
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
     await db.otps.update_one(
@@ -271,8 +284,45 @@ async def request_otp(payload: CustomerOTPRequest):
         upsert=True,
     )
     logger.info("MOCK OTP for %s: %s", phone, otp)
-    # MOCK: return OTP in response for development
-    return {"success": True, "message": "OTP sent (mock). Use it to verify.", "otp": otp, "mock": True}
+    # MOCK: return OTP in response for development (set EXPOSE_OTP=false to hide)
+    expose = os.environ.get("EXPOSE_OTP", "true").lower() == "true"
+    resp = {"success": True, "message": "OTP sent (mock). Use it to verify.", "mock": True}
+    if expose:
+        resp["otp"] = otp
+    return resp
+
+
+@api.post("/auth/admin/login")
+async def admin_login(payload: AdminLogin, request: Request):
+    email = payload.email.lower().strip()
+    ip = request.client.host if request.client else "unknown"
+    identifier = f"{ip}:{email}"
+
+    # Brute force lockout: 5 failed attempts in 15 min = locked for 15 min
+    fifteen_min_ago = datetime.now(timezone.utc) - timedelta(minutes=15)
+    attempts_doc = await db.login_attempts.find_one({"identifier": identifier})
+    if attempts_doc:
+        recent_fails = [t for t in attempts_doc.get("failures", []) if t >= fifteen_min_ago.isoformat()]
+        if len(recent_fails) >= 5:
+            raise HTTPException(status_code=429, detail="Too many failed attempts. Try again in 15 minutes.")
+
+    user = await db.users.find_one({"email": email})
+    valid = user and user.get("role") == "admin" and verify_password(payload.password, user.get("password_hash", ""))
+    if not valid:
+        await db.login_attempts.update_one(
+            {"identifier": identifier},
+            {"$push": {"failures": now_iso()}},
+            upsert=True,
+        )
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # Success: clear failures
+    await db.login_attempts.delete_one({"identifier": identifier})
+    token = create_token(user["id"], "admin")
+    return {
+        "token": token,
+        "user": {"id": user["id"], "email": user["email"], "name": user["name"], "role": "admin"},
+    }
 
 
 @api.post("/auth/customer/verify-otp")
@@ -312,18 +362,40 @@ async def verify_otp(payload: CustomerOTPVerify):
 
 
 @api.post("/auth/admin/login")
-async def admin_login(payload: AdminLogin):
+async def admin_login(payload: AdminLogin, request: Request):
     email = payload.email.lower().strip()
+    identifier = f"admin:{email}"  # email-only key (works behind load balancers)
+
+    # Brute force lockout: 5 failed attempts in 15 min = locked for 15 min
+    fifteen_min_ago = datetime.now(timezone.utc) - timedelta(minutes=15)
+    attempts_doc = await db.login_attempts.find_one({"identifier": identifier})
+    if attempts_doc:
+        recent_fails = [t for t in attempts_doc.get("failures", []) if t >= fifteen_min_ago.isoformat()]
+        if len(recent_fails) >= 5:
+            raise HTTPException(status_code=429, detail="Too many failed attempts. Try again in 15 minutes.")
+
     user = await db.users.find_one({"email": email})
-    if not user or user.get("role") != "admin":
+    valid = user and user.get("role") == "admin" and verify_password(payload.password, user.get("password_hash", ""))
+    if not valid:
+        await db.login_attempts.update_one(
+            {"identifier": identifier},
+            {"$push": {"failures": now_iso()}},
+            upsert=True,
+        )
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    if not verify_password(payload.password, user.get("password_hash", "")):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # Success: clear failures
+    await db.login_attempts.delete_one({"identifier": identifier})
     token = create_token(user["id"], "admin")
     return {
         "token": token,
         "user": {"id": user["id"], "email": user["email"], "name": user["name"], "role": "admin"},
     }
+
+
+@api.post("/auth/admin/login_DEPRECATED_REMOVED")
+async def _unused(payload: AdminLogin):
+    raise HTTPException(404)
 
 
 @api.get("/auth/me")
@@ -475,7 +547,26 @@ async def create_order(payload: OrderCreate, user: dict = Depends(get_current_us
     if not payload.discount_code or not payload.discount_code.strip():
         raise HTTPException(status_code=400, detail="Access code is required to place an order")
 
-    subtotal = sum(i.price * i.quantity for i in payload.items)
+    # SECURITY: NEVER trust client-supplied prices. Re-fetch every product from DB.
+    trusted_items = []
+    subtotal = 0.0
+    for i in payload.items:
+        if i.quantity <= 0 or i.quantity > 50:
+            raise HTTPException(status_code=400, detail=f"Invalid quantity for {i.product_id}")
+        prod = await db.products.find_one({"id": i.product_id}, {"_id": 0})
+        if not prod or prod.get("hidden"):
+            raise HTTPException(status_code=400, detail=f"Product unavailable: {i.product_id}")
+        if prod.get("stock", 0) < i.quantity:
+            raise HTTPException(status_code=400, detail=f"Insufficient stock for {prod['name']}")
+        trusted_items.append({
+            "product_id": prod["id"],
+            "name": prod["name"],
+            "price": float(prod["price"]),  # SERVER PRICE, not client price
+            "quantity": i.quantity,
+            "image_url": prod.get("image_url", ""),
+        })
+        subtotal += float(prod["price"]) * i.quantity
+
     code_doc = await db.discount_codes.find_one({"code": payload.discount_code.strip().upper()})
     if not code_doc:
         raise HTTPException(status_code=400, detail="Invalid access code")
@@ -484,28 +575,32 @@ async def create_order(payload: OrderCreate, user: dict = Depends(get_current_us
     # Per-product discount: applied once per line, capped at the line total
     pd_map = code_doc.get("product_discounts", {}) or {}
     discount = 0.0
-    for i in payload.items:
-        amt = float(pd_map.get(i.product_id, 0) or 0)
+    for it in trusted_items:
+        amt = float(pd_map.get(it["product_id"], 0) or 0)
         if amt > 0:
-            line_total = i.price * i.quantity
+            line_total = it["price"] * it["quantity"]
             discount += min(amt, line_total)
 
+    # Validate payment method server-side
+    if payload.payment_method not in {"cod", "upi", "razorpay"}:
+        raise HTTPException(status_code=400, detail="Invalid payment method")
+
     shipping = 0 if subtotal >= 499 else 49
-    total = max(0, subtotal - discount + shipping)
+    total = round(max(0, subtotal - discount + shipping), 2)
 
     order_id = str(uuid.uuid4())
     order = {
         "id": order_id,
         "order_number": "TS" + order_id[:8].upper(),
         "user_id": user["id"],
-        "items": [i.model_dump() for i in payload.items],
+        "items": trusted_items,
         "address": payload.address.model_dump(),
         "payment_method": payload.payment_method,
-        "subtotal": subtotal,
-        "discount": discount,
+        "subtotal": round(subtotal, 2),
+        "discount": round(discount, 2),
         "shipping": shipping,
         "total": total,
-        "discount_code": code_doc["code"] if code_doc else None,
+        "discount_code": code_doc["code"],
         "status": "pending",
         "created_at": now_iso(),
     }
@@ -577,6 +672,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    return response
 
 
 @app.on_event("startup")
