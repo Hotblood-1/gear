@@ -104,7 +104,6 @@ export default function AdminCodes() {
   };
 
   const remove = async (id, codeStr) => {
-    if (!confirm(`Delete code ${codeStr}?\n\nThis cannot be undone.`)) return;
     try {
       await api.delete(`/admin/codes/${id}`);
       toast.success(`Deleted ${codeStr}`);
@@ -117,7 +116,6 @@ export default function AdminCodes() {
   const removeAllUsed = async () => {
     const used = codes.filter((c) => c.used);
     if (used.length === 0) return toast.info("No used codes to clear");
-    if (!confirm(`Delete all ${used.length} used code(s)? This cannot be undone.`)) return;
     try {
       await Promise.all(used.map((c) => api.delete(`/admin/codes/${c.id}`)));
       toast.success(`Cleared ${used.length} used code(s)`);

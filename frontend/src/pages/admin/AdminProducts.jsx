@@ -71,10 +71,9 @@ export default function AdminProducts() {
   };
 
   const remove = async (p) => {
-    if (!confirm(`Delete "${p.name}"?`)) return;
     try {
       await api.delete(`/admin/products/${p.id}`);
-      toast.success("Deleted");
+      toast.success(`Deleted "${p.name}"`);
       load();
     } catch (e) {
       toast.error(formatError(e));
