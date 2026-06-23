@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Edit2, Trash2, Eye, EyeOff, Package, Tag, ShoppingBag, ShieldAlert } from "lucide-react";
+import { Plus, Edit2, Trash2, Eye, EyeOff, Package, Tag, ShoppingBag, ShieldAlert, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { api, formatError } from "@/lib/api";
 
@@ -11,6 +11,7 @@ function AdminSidebar() {
     { to: "/admin/products", label: "Products", icon: Package },
     { to: "/admin/orders", label: "Orders", icon: ShoppingBag },
     { to: "/admin/codes", label: "Discount Codes", icon: Tag },
+    { to: "/admin/pending-otps", label: "Pending OTPs", icon: Phone },
     { to: "/admin/fraud", label: "Fraud Log", icon: ShieldAlert },
   ];
   return (

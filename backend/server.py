@@ -658,6 +658,22 @@ async def get_order(order_id: str, user: dict = Depends(get_current_user)):
     return o
 
 
+@api.get("/admin/pending-otps")
+async def list_pending_otps(_: dict = Depends(require_admin)):
+    now = datetime.now(timezone.utc)
+    items = await db.otps.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    out = []
+    for o in items:
+        exp = o.get("expires_at")
+        if isinstance(exp, str):
+            exp = datetime.fromisoformat(exp)
+        if exp and exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if exp and exp > now:
+            out.append({"phone": o["phone"], "otp": o["otp"], "created_at": o.get("created_at"), "expires_at": exp.isoformat()})
+    return out
+
+
 @api.get("/admin/fraud-logs")
 async def list_fraud_logs(_: dict = Depends(require_admin)):
     items = await db.fraud_logs.find({}, {"_id": 0}).sort("created_at", -1).limit(500).to_list(500)
