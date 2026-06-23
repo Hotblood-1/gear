@@ -23,8 +23,23 @@ export default function AdminPendingOtps() {
   }, []);
 
   const copy = (text, label) => {
-    navigator.clipboard.writeText(text);
-    toast.success(`Copied ${label}`);
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      toast.success(`Copied ${label}`);
+    } catch (e) {
+      toast.error(`Couldn't copy. Long-press the OTP to copy manually.`);
+    }
   };
 
   const waLink = (phone, otp) =>
