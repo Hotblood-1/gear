@@ -121,6 +121,7 @@ class ProductIn(BaseModel):
     stock: int = 100
     hidden: bool = False
     tags: List[str] = Field(default_factory=list)  # best-seller, new, featured
+    default_discount: float = 0  # default ₹ off for codes
 
 
 class ProductUpdate(BaseModel):
@@ -134,6 +135,7 @@ class ProductUpdate(BaseModel):
     stock: Optional[int] = None
     hidden: Optional[bool] = None
     tags: Optional[List[str]] = None
+    default_discount: Optional[float] = None
 
 
 class OrderItem(BaseModel):

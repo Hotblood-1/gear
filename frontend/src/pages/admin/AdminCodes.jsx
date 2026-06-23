@@ -22,6 +22,14 @@ export default function AdminCodes() {
       ]);
       setCodes(c.data);
       setProducts(p.data);
+      // Pre-fill discount inputs from each product's saved default_discount
+      const initial = {};
+      p.data.forEach((prod) => {
+        if (prod.default_discount && prod.default_discount > 0) {
+          initial[prod.id] = prod.default_discount;
+        }
+      });
+      setDiscountsByPid(initial);
     } finally {
       setLoading(false);
     }
@@ -48,6 +56,30 @@ export default function AdminCodes() {
       else next[pid] = n;
       return next;
     });
+  };
+
+  // Auto-save default_discount on blur
+  const saveDefaultDiscount = async (pid, value) => {
+    const n = Number(value) || 0;
+    try {
+      await api.patch(`/admin/products/${pid}`, { default_discount: n });
+      setProducts((prev) => prev.map((p) => p.id === pid ? { ...p, default_discount: n } : p));
+    } catch (e) {
+      toast.error(formatError(e));
+    }
+  };
+
+  // Auto-save price on blur
+  const savePrice = async (pid, value) => {
+    const n = Number(value);
+    if (!n || n <= 0) return toast.error("Price must be positive");
+    try {
+      await api.patch(`/admin/products/${pid}`, { price: n });
+      setProducts((prev) => prev.map((p) => p.id === pid ? { ...p, price: n } : p));
+      toast.success("Price updated");
+    } catch (e) {
+      toast.error(formatError(e));
+    }
   };
 
   const totalCovered = Object.keys(discountsByPid).length;
@@ -101,7 +133,7 @@ export default function AdminCodes() {
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h3 className="font-display text-lg font-bold text-slate-900">Generate new code</h3>
-                <p className="text-xs text-slate-500">Set ₹ off for products you want this code to discount. Leave others blank (₹0 off).</p>
+                <p className="text-xs text-slate-500">Discounts &amp; prices auto-save as you type — reused next time. Click <b>Generate code</b> to lock the current values into a new XXXX-XXXX-XXXX code.</p>
               </div>
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -134,7 +166,7 @@ export default function AdminCodes() {
                 <thead className="sticky top-0 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                   <tr>
                     <th className="px-3 py-2">Product</th>
-                    <th className="px-3 py-2">Price</th>
+                    <th className="px-3 py-2 w-32">Price (₹)</th>
                     <th className="px-3 py-2 w-40">₹ Off (per line)</th>
                   </tr>
                 </thead>
@@ -152,7 +184,22 @@ export default function AdminCodes() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-slate-600">₹{p.price}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1">
+                          <span className="text-slate-400">₹</span>
+                          <input
+                            data-testid={`code-price-${p.id}`}
+                            type="number"
+                            min="1"
+                            defaultValue={p.price}
+                            key={`price-${p.id}-${p.price}`}
+                            onBlur={(e) => {
+                              if (Number(e.target.value) !== p.price) savePrice(p.id, e.target.value);
+                            }}
+                            className="w-20 rounded-md border border-slate-200 bg-white px-2 py-1 text-sm focus:border-blue-600 focus:outline-none"
+                          />
+                        </div>
+                      </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1">
                           <span className="text-slate-400">₹</span>
@@ -163,6 +210,7 @@ export default function AdminCodes() {
                             max={p.price}
                             value={discountsByPid[p.id] || ""}
                             onChange={(e) => setDiscount(p.id, e.target.value)}
+                            onBlur={(e) => saveDefaultDiscount(p.id, e.target.value)}
                             placeholder="0"
                             className="w-20 rounded-md border border-slate-200 bg-white px-2 py-1 text-sm focus:border-blue-600 focus:outline-none"
                           />
