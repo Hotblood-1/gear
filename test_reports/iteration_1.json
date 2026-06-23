@@ -1,0 +1,28 @@
+{
+  "summary": "Backend smoke + functional tests for TestSeries ecommerce API. 24/24 checks passed: products listing/filtering/search, single product 404, mock OTP flow, admin login (success+401), JWT auth/me, RBAC enforcement (customer->403 on admin routes), full product CRUD, discount code lifecycle (create/validate/one-time reuse blocked), order creation with correct subtotal/discount/shipping calc + free-shipping threshold, customer order isolation (non-owner 403), and admin order status update (valid+invalid 400).",
+  "tested_scope": ["backend", "auth", "integration"],
+  "passed": [
+    "GET /api/products returns 10 seeded products with required fields",
+    "GET /api/products?category=Tablet filters",
+    "GET /api/products?search=notebook filters by name",
+    "GET /api/products/{id} returns product; invalid id -> 404",
+    "POST /api/auth/customer/request-otp returns {otp, mock:true}",
+    "POST /api/auth/customer/verify-otp: invalid->400, valid->token+role=customer",
+    "POST /api/auth/admin/login: valid->token+role=admin; wrong pw->401",
+    "GET /api/auth/me with Bearer returns current user",
+    "RBAC: customer token on /admin/* -> 403",
+    "Admin product CRUD (create/patch/delete) works",
+    "Discount code create + validate (amount); one-time reuse blocked",
+    "POST /api/orders calculates subtotal/discount/shipping(49 below 499)/total correctly, marks code used, order_number starts with TS",
+    "GET /api/orders/mine returns only caller's orders",
+    "GET /api/orders/{id} -> 403 for non-owner customer",
+    "PATCH /api/admin/orders/{id}: valid status 200, invalid status 400"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "not tested (skipped per request)"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "test_credentials": "Loaded from /app/memory/test_credentials.md (admin + mock OTP customer)",
+  "mocked_apis_verified": ["/api/auth/customer/request-otp returns OTP in response (mock:true) as expected"]
+}
