@@ -25,6 +25,7 @@ import Terms from "@/pages/Terms";
 import AdminProducts from "@/pages/admin/AdminProducts";
 import AdminOrders from "@/pages/admin/AdminOrders";
 import AdminCodes from "@/pages/admin/AdminCodes";
+import AdminFraud from "@/pages/admin/AdminFraud";
 
 export default function App() {
   return (
@@ -51,6 +52,7 @@ export default function App() {
                 <Route path="/admin/products" element={<ProtectedRoute adminOnly><AdminProducts /></ProtectedRoute>} />
                 <Route path="/admin/orders" element={<ProtectedRoute adminOnly><AdminOrders /></ProtectedRoute>} />
                 <Route path="/admin/codes" element={<ProtectedRoute adminOnly><AdminCodes /></ProtectedRoute>} />
+                <Route path="/admin/fraud" element={<ProtectedRoute adminOnly><AdminFraud /></ProtectedRoute>} />
               </Routes>
             </main>
             <Footer />

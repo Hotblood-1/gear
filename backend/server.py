@@ -538,13 +538,23 @@ async def validate_code(code: str):
 # ---------------------------------------------------------------------------
 # Orders
 # ---------------------------------------------------------------------------
+async def log_fraud(user_id: str, kind: str, detail: dict):
+    await db.fraud_logs.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "kind": kind,
+        "detail": detail,
+        "created_at": now_iso(),
+    })
+
+
 @api.post("/orders")
 async def create_order(payload: OrderCreate, user: dict = Depends(get_current_user)):
     if not payload.items:
         raise HTTPException(status_code=400, detail="Cart is empty")
 
-    # Access code is MANDATORY for every purchase
     if not payload.discount_code or not payload.discount_code.strip():
+        await log_fraud(user["id"], "missing_code", {"items": len(payload.items)})
         raise HTTPException(status_code=400, detail="Access code is required to place an order")
 
     # SECURITY: NEVER trust client-supplied prices. Re-fetch every product from DB.
@@ -552,16 +562,26 @@ async def create_order(payload: OrderCreate, user: dict = Depends(get_current_us
     subtotal = 0.0
     for i in payload.items:
         if i.quantity <= 0 or i.quantity > 50:
+            await log_fraud(user["id"], "bad_quantity", {"product_id": i.product_id, "qty": i.quantity})
             raise HTTPException(status_code=400, detail=f"Invalid quantity for {i.product_id}")
         prod = await db.products.find_one({"id": i.product_id}, {"_id": 0})
         if not prod or prod.get("hidden"):
+            await log_fraud(user["id"], "unavailable_product", {"product_id": i.product_id})
             raise HTTPException(status_code=400, detail=f"Product unavailable: {i.product_id}")
         if prod.get("stock", 0) < i.quantity:
+            await log_fraud(user["id"], "stock_exceeded", {"product_id": i.product_id, "qty": i.quantity, "stock": prod.get("stock", 0)})
             raise HTTPException(status_code=400, detail=f"Insufficient stock for {prod['name']}")
+        # Detect price tampering (informational; we still use server price)
+        if abs(float(i.price) - float(prod["price"])) > 0.01:
+            await log_fraud(user["id"], "price_tampering", {
+                "product_id": i.product_id,
+                "client_price": float(i.price),
+                "server_price": float(prod["price"]),
+            })
         trusted_items.append({
             "product_id": prod["id"],
             "name": prod["name"],
-            "price": float(prod["price"]),  # SERVER PRICE, not client price
+            "price": float(prod["price"]),
             "quantity": i.quantity,
             "image_url": prod.get("image_url", ""),
         })
@@ -569,10 +589,11 @@ async def create_order(payload: OrderCreate, user: dict = Depends(get_current_us
 
     code_doc = await db.discount_codes.find_one({"code": payload.discount_code.strip().upper()})
     if not code_doc:
+        await log_fraud(user["id"], "invalid_code", {"code": payload.discount_code.strip().upper()})
         raise HTTPException(status_code=400, detail="Invalid access code")
     if code_doc.get("one_time") and code_doc.get("used"):
+        await log_fraud(user["id"], "reused_code", {"code": code_doc["code"]})
         raise HTTPException(status_code=400, detail="Access code already used")
-    # Per-product discount: applied once per line, capped at the line total
     pd_map = code_doc.get("product_discounts", {}) or {}
     discount = 0.0
     for it in trusted_items:
@@ -581,8 +602,8 @@ async def create_order(payload: OrderCreate, user: dict = Depends(get_current_us
             line_total = it["price"] * it["quantity"]
             discount += min(amt, line_total)
 
-    # Validate payment method server-side
     if payload.payment_method not in {"cod", "upi", "razorpay"}:
+        await log_fraud(user["id"], "bad_payment_method", {"method": payload.payment_method})
         raise HTTPException(status_code=400, detail="Invalid payment method")
 
     shipping = 0 if subtotal >= 499 else 49
@@ -635,6 +656,18 @@ async def get_order(order_id: str, user: dict = Depends(get_current_user)):
     if user.get("role") != "admin" and o["user_id"] != user["id"]:
         raise HTTPException(status_code=403, detail="Forbidden")
     return o
+
+
+@api.get("/admin/fraud-logs")
+async def list_fraud_logs(_: dict = Depends(require_admin)):
+    items = await db.fraud_logs.find({}, {"_id": 0}).sort("created_at", -1).limit(500).to_list(500)
+    # Attach minimal user info
+    user_ids = list({l["user_id"] for l in items if l.get("user_id")})
+    users = await db.users.find({"id": {"$in": user_ids}}, {"_id": 0, "id": 1, "phone": 1, "name": 1, "email": 1}).to_list(500)
+    by_id = {u["id"]: u for u in users}
+    for l in items:
+        l["user"] = by_id.get(l.get("user_id"), {})
+    return items
 
 
 @api.get("/admin/orders")
