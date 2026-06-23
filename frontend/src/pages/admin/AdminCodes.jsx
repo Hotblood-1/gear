@@ -103,10 +103,24 @@ export default function AdminCodes() {
     }
   };
 
-  const remove = async (id) => {
-    if (!confirm("Delete this code?")) return;
+  const remove = async (id, codeStr) => {
+    if (!confirm(`Delete code ${codeStr}?\n\nThis cannot be undone.`)) return;
     try {
       await api.delete(`/admin/codes/${id}`);
+      toast.success(`Deleted ${codeStr}`);
+      load();
+    } catch (e) {
+      toast.error(formatError(e));
+    }
+  };
+
+  const removeAllUsed = async () => {
+    const used = codes.filter((c) => c.used);
+    if (used.length === 0) return toast.info("No used codes to clear");
+    if (!confirm(`Delete all ${used.length} used code(s)? This cannot be undone.`)) return;
+    try {
+      await Promise.all(used.map((c) => api.delete(`/admin/codes/${c.id}`)));
+      toast.success(`Cleared ${used.length} used code(s)`);
       load();
     } catch (e) {
       toast.error(formatError(e));
@@ -235,7 +249,21 @@ export default function AdminCodes() {
           </form>
 
           {/* CODES LIST */}
-          <div className="mt-8 space-y-3">
+          <div className="mt-8 flex items-center justify-between">
+            <h2 className="font-display text-xl font-bold text-slate-900">
+              All codes <span className="text-sm font-normal text-slate-500">({codes.length})</span>
+            </h2>
+            {codes.some((c) => c.used) && (
+              <button
+                onClick={removeAllUsed}
+                data-testid="admin-clear-used-codes"
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-rose-300 hover:text-rose-700 active:scale-95"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Clear all used codes
+              </button>
+            )}
+          </div>
+          <div className="mt-3 space-y-3">
             {loading ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-400">Loading…</div>
             ) : codes.length === 0 ? (
@@ -263,8 +291,12 @@ export default function AdminCodes() {
                         </span>
                       )}
                     </div>
-                    <button onClick={() => remove(c.id)} data-testid={`admin-code-delete-${c.id}`} className="rounded-full p-2 text-rose-500 hover:bg-rose-50">
-                      <Trash2 className="h-4 w-4" />
+                    <button
+                      onClick={() => remove(c.id, c.code)}
+                      data-testid={`admin-code-delete-${c.id}`}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 active:scale-95"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Delete
                     </button>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
