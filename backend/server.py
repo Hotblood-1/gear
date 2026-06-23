@@ -399,12 +399,27 @@ async def list_codes(_: dict = Depends(require_admin)):
     return items
 
 
+def _generate_code_block(n: int = 4) -> str:
+    alphabet = string.ascii_uppercase + string.digits
+    return "".join(random.choices(alphabet, k=n))
+
+
+def generate_access_code() -> str:
+    """Generate a 12-char code in XXXX-XXXX-XXXX format."""
+    return f"{_generate_code_block()}-{_generate_code_block()}-{_generate_code_block()}"
+
+
 @api.post("/admin/codes")
 async def create_code(payload: DiscountCodeIn, _: dict = Depends(require_admin)):
-    code = (payload.code or "").strip().upper() or "TS" + "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
-    existing = await db.discount_codes.find_one({"code": code})
-    if existing:
-        raise HTTPException(status_code=400, detail="Code already exists")
+    # Always auto-generate codes in XXXX-XXXX-XXXX format (ignore any client-provided code)
+    code = generate_access_code()
+    # Guarantee uniqueness
+    for _attempt in range(5):
+        if not await db.discount_codes.find_one({"code": code}):
+            break
+        code = generate_access_code()
+    else:
+        raise HTTPException(status_code=500, detail="Could not generate unique code")
     doc = {
         "id": str(uuid.uuid4()),
         "code": code,
@@ -447,16 +462,17 @@ async def create_order(payload: OrderCreate, user: dict = Depends(get_current_us
     if not payload.items:
         raise HTTPException(status_code=400, detail="Cart is empty")
 
+    # Access code is MANDATORY for every purchase
+    if not payload.discount_code or not payload.discount_code.strip():
+        raise HTTPException(status_code=400, detail="Access code is required to place an order")
+
     subtotal = sum(i.price * i.quantity for i in payload.items)
-    discount = 0.0
-    code_doc = None
-    if payload.discount_code:
-        code_doc = await db.discount_codes.find_one({"code": payload.discount_code.strip().upper()})
-        if not code_doc:
-            raise HTTPException(status_code=400, detail="Invalid discount code")
-        if code_doc.get("one_time") and code_doc.get("used"):
-            raise HTTPException(status_code=400, detail="Discount code already used")
-        discount = float(code_doc["amount"])
+    code_doc = await db.discount_codes.find_one({"code": payload.discount_code.strip().upper()})
+    if not code_doc:
+        raise HTTPException(status_code=400, detail="Invalid access code")
+    if code_doc.get("one_time") and code_doc.get("used"):
+        raise HTTPException(status_code=400, detail="Access code already used")
+    discount = float(code_doc["amount"])
 
     shipping = 0 if subtotal >= 499 else 49
     total = max(0, subtotal - discount + shipping)

@@ -25,9 +25,8 @@ export default function AdminCodes() {
   const create = async (e) => {
     e.preventDefault();
     try {
-      await api.post("/admin/codes", { code: code.trim() || null, amount: Number(amount), one_time: oneTime });
-      toast.success("Code created");
-      setCode("");
+      await api.post("/admin/codes", { amount: Number(amount), one_time: oneTime });
+      toast.success("Code generated");
       setAmount(50);
       load();
     } catch (e) {
@@ -57,17 +56,7 @@ export default function AdminCodes() {
         <div className="flex-1">
           <h1 className="font-display text-3xl font-bold text-slate-900">Discount Codes</h1>
 
-          <form onSubmit={create} className="mt-6 grid gap-3 rounded-2xl border border-slate-200 bg-white p-5 sm:grid-cols-4">
-            <div>
-              <label className="text-xs font-semibold text-slate-700">Code (leave empty for auto)</label>
-              <input
-                data-testid="admin-code-input"
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="STUDENT50"
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-blue-600 focus:bg-white focus:outline-none"
-              />
-            </div>
+          <form onSubmit={create} className="mt-6 grid gap-3 rounded-2xl border border-slate-200 bg-white p-5 sm:grid-cols-3">
             <div>
               <label className="text-xs font-semibold text-slate-700">Amount (₹)</label>
               <input
@@ -77,6 +66,7 @@ export default function AdminCodes() {
                 onChange={(e) => setAmount(e.target.value)}
                 className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-blue-600 focus:bg-white focus:outline-none"
               />
+              <p className="mt-1 text-[11px] text-slate-500">Code auto-generated as XXXX-XXXX-XXXX</p>
             </div>
             <div className="flex items-end">
               <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -91,7 +81,7 @@ export default function AdminCodes() {
             </div>
             <div className="flex items-end">
               <button type="submit" data-testid="admin-code-create" className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
-                <Plus className="h-4 w-4" /> Create
+                <Plus className="h-4 w-4" /> Generate code
               </button>
             </div>
           </form>

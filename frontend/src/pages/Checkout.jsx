@@ -46,6 +46,7 @@ export default function Checkout() {
     for (const k of Object.keys(address)) {
       if (!address[k]) return toast.error("Please fill all address fields");
     }
+    if (!appliedCode) return toast.error("An access code is required. Please apply your code to continue.");
     setSubmitting(true);
     try {
       const res = await api.post("/orders", {
@@ -58,7 +59,7 @@ export default function Checkout() {
         })),
         address,
         payment_method: payment,
-        discount_code: appliedCode || null,
+        discount_code: appliedCode,
       });
       clear();
       nav(`/order/${res.data.id}`);
@@ -155,15 +156,20 @@ export default function Checkout() {
             ))}
           </div>
 
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-slate-700">Discount code</label>
+          <div className="space-y-2 rounded-xl border-2 border-blue-200 bg-blue-50/50 p-3">
+            <label className="text-xs font-bold uppercase tracking-wide text-blue-700">
+              Access code <span className="text-rose-600">*required</span>
+            </label>
+            <p className="text-[11px] text-slate-600">
+              An access code is required to place any order. Format: XXXX-XXXX-XXXX
+            </p>
             <div className="flex gap-2">
               <input
                 data-testid="checkout-discount-code"
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="ENTER CODE"
-                className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm uppercase focus:border-blue-600 focus:bg-white focus:outline-none"
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                placeholder="XXXX-XXXX-XXXX"
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-mono tracking-wider focus:border-blue-600 focus:outline-none"
               />
               <button
                 data-testid="checkout-apply-code"
@@ -175,8 +181,8 @@ export default function Checkout() {
               </button>
             </div>
             {appliedCode && (
-              <div className="flex items-center gap-1 text-xs text-emerald-700">
-                <CheckCircle2 className="h-3.5 w-3.5" /> {appliedCode} · ₹{discount} off
+              <div className="flex items-center gap-1 text-xs font-semibold text-emerald-700">
+                <CheckCircle2 className="h-3.5 w-3.5" /> {appliedCode} · ₹{discount} off applied
               </div>
             )}
           </div>
@@ -195,7 +201,7 @@ export default function Checkout() {
           <button
             type="submit"
             data-testid="checkout-place-order"
-            disabled={submitting || payment === "razorpay"}
+            disabled={submitting || payment === "razorpay" || !appliedCode}
             className="w-full rounded-full bg-blue-600 py-3 font-semibold text-white transition-all hover:bg-blue-700 active:scale-95 disabled:bg-slate-300"
           >
             {submitting ? "Placing order…" : `Place order · ₹${total}`}

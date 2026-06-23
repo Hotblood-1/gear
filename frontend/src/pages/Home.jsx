@@ -71,10 +71,6 @@ export default function Home() {
                   className="aspect-[4/5] w-full object-cover"
                 />
               </div>
-              <div className="absolute -bottom-4 -left-4 hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:block">
-                <div className="text-xs text-slate-500">Trusted by</div>
-                <div className="font-display text-2xl font-bold text-slate-900">10,000+ students</div>
-              </div>
             </div>
           </div>
         </div>
@@ -136,9 +132,9 @@ export default function Home() {
           <div className="grid items-center gap-8 lg:grid-cols-2">
             <div>
               <h3 className="font-display text-2xl font-bold leading-tight sm:text-3xl lg:text-4xl">
-                First order? Save with code <span className="rounded-lg bg-white/15 px-2 py-0.5">STUDENT50</span>
+                Got your access code? <span className="rounded-lg bg-white/15 px-2 py-0.5">XXXX-XXXX-XXXX</span>
               </h3>
-              <p className="mt-3 text-blue-100">Flat ₹50 off your first order. Limited time only.</p>
+              <p className="mt-3 text-blue-100">Every order requires an exclusive 12-character access code. Apply it at checkout to unlock your purchase &amp; instant savings.</p>
             </div>
             <div className="lg:justify-self-end">
               <Link
