@@ -10,8 +10,15 @@ export default function Checkout() {
   const nav = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [code, setCode] = useState("");
-  const [discount, setDiscount] = useState(0);
+  const [pdMap, setPdMap] = useState({}); // product_id -> ₹ off (from validated code)
   const [appliedCode, setAppliedCode] = useState(null);
+
+  // Compute discount from cart × pdMap
+  const discountByLine = items.map((i) => {
+    const amt = Number(pdMap[i.product_id] || 0);
+    return Math.min(amt, i.price * i.quantity);
+  });
+  const discount = discountByLine.reduce((s, v) => s + v, 0);
 
   const [address, setAddress] = useState({
     full_name: "",
@@ -30,11 +37,18 @@ export default function Checkout() {
     if (!code.trim()) return;
     try {
       const r = await api.post(`/codes/validate?code=${encodeURIComponent(code.trim())}`);
-      setDiscount(r.data.amount);
+      const map = r.data.product_discounts || {};
+      setPdMap(map);
       setAppliedCode(r.data.code);
-      toast.success(`Code applied: ₹${r.data.amount} off`);
+      // Check if any item in cart is covered
+      const covered = items.some((i) => map[i.product_id] && Number(map[i.product_id]) > 0);
+      if (!covered) {
+        toast.warning("Code valid, but no items in your cart are covered by this code.");
+      } else {
+        toast.success(`Code applied: ${r.data.code}`);
+      }
     } catch (e) {
-      setDiscount(0);
+      setPdMap({});
       setAppliedCode(null);
       toast.error(formatError(e));
     }
@@ -144,16 +158,35 @@ export default function Checkout() {
           <h3 className="font-display text-lg font-bold text-slate-900">Order summary</h3>
 
           <div className="max-h-60 space-y-3 overflow-auto">
-            {items.map((i) => (
-              <div key={i.product_id} className="flex items-center gap-3">
-                <img src={i.image_url} alt={i.name} className="h-12 w-12 rounded-lg object-cover" />
-                <div className="flex-1 text-sm">
-                  <div className="line-clamp-1 font-medium text-slate-900">{i.name}</div>
-                  <div className="text-xs text-slate-500">Qty {i.quantity}</div>
+            {items.map((i, idx) => {
+              const off = discountByLine[idx];
+              return (
+                <div key={i.product_id} className="flex items-center gap-3">
+                  <img src={i.image_url} alt={i.name} className="h-12 w-12 rounded-lg object-cover" />
+                  <div className="flex-1 text-sm">
+                    <div className="line-clamp-1 font-medium text-slate-900">{i.name}</div>
+                    <div className="text-xs text-slate-500">
+                      Qty {i.quantity}
+                      {off > 0 && (
+                        <span className="ml-2 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                          −₹{off} off
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right text-sm font-semibold">
+                    {off > 0 ? (
+                      <>
+                        <div className="text-xs text-slate-400 line-through">₹{i.price * i.quantity}</div>
+                        <div className="text-emerald-700">₹{i.price * i.quantity - off}</div>
+                      </>
+                    ) : (
+                      <div>₹{i.price * i.quantity}</div>
+                    )}
+                  </div>
                 </div>
-                <div className="text-sm font-semibold">₹{i.price * i.quantity}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="space-y-2 rounded-xl border-2 border-blue-200 bg-blue-50/50 p-3">
@@ -182,7 +215,7 @@ export default function Checkout() {
             </div>
             {appliedCode && (
               <div className="flex items-center gap-1 text-xs font-semibold text-emerald-700">
-                <CheckCircle2 className="h-3.5 w-3.5" /> {appliedCode} · ₹{discount} off applied
+                <CheckCircle2 className="h-3.5 w-3.5" /> {appliedCode} applied · ₹{discount} total off
               </div>
             )}
           </div>

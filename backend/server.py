@@ -165,9 +165,8 @@ class OrderStatusUpdate(BaseModel):
 
 
 class DiscountCodeIn(BaseModel):
-    code: Optional[str] = None
-    amount: float
     one_time: bool = True
+    product_discounts: dict[str, float] = Field(default_factory=dict)  # product_id -> ₹ off (per line)
 
 
 # ---------------------------------------------------------------------------
@@ -411,19 +410,23 @@ def generate_access_code() -> str:
 
 @api.post("/admin/codes")
 async def create_code(payload: DiscountCodeIn, _: dict = Depends(require_admin)):
-    # Always auto-generate codes in XXXX-XXXX-XXXX format (ignore any client-provided code)
+    # Clean up product_discounts: drop zero/negative entries
+    pd = {pid: float(amt) for pid, amt in payload.product_discounts.items() if amt and amt > 0}
+    if not pd:
+        raise HTTPException(status_code=400, detail="Set a discount for at least one product")
+    # Auto-generate unique XXXX-XXXX-XXXX code
     code = generate_access_code()
-    # Guarantee uniqueness
     for _attempt in range(5):
         if not await db.discount_codes.find_one({"code": code}):
             break
         code = generate_access_code()
     else:
         raise HTTPException(status_code=500, detail="Could not generate unique code")
+
     doc = {
         "id": str(uuid.uuid4()),
         "code": code,
-        "amount": payload.amount,
+        "product_discounts": pd,
         "one_time": payload.one_time,
         "used": False,
         "used_by": None,
@@ -451,7 +454,11 @@ async def validate_code(code: str):
         raise HTTPException(status_code=404, detail="Invalid code")
     if doc.get("one_time") and doc.get("used"):
         raise HTTPException(status_code=400, detail="Code already used")
-    return {"code": doc["code"], "amount": doc["amount"], "one_time": doc["one_time"]}
+    return {
+        "code": doc["code"],
+        "product_discounts": doc.get("product_discounts", {}),
+        "one_time": doc["one_time"],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -472,7 +479,14 @@ async def create_order(payload: OrderCreate, user: dict = Depends(get_current_us
         raise HTTPException(status_code=400, detail="Invalid access code")
     if code_doc.get("one_time") and code_doc.get("used"):
         raise HTTPException(status_code=400, detail="Access code already used")
-    discount = float(code_doc["amount"])
+    # Per-product discount: applied once per line, capped at the line total
+    pd_map = code_doc.get("product_discounts", {}) or {}
+    discount = 0.0
+    for i in payload.items:
+        amt = float(pd_map.get(i.product_id, 0) or 0)
+        if amt > 0:
+            line_total = i.price * i.quantity
+            discount += min(amt, line_total)
 
     shipping = 0 if subtotal >= 499 else 49
     total = max(0, subtotal - discount + shipping)
