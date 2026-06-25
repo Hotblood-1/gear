@@ -104,6 +104,12 @@ class CustomerOTPVerify(BaseModel):
     phone: str
     otp: str
     name: Optional[str] = None
+    password: Optional[str] = None
+
+
+class CustomerPasswordLogin(BaseModel):
+    phone: str
+    password: str
 
 
 class AdminLogin(BaseModel):
@@ -355,6 +361,8 @@ async def verify_otp(payload: CustomerOTPVerify):
             "created_at": now_iso(),
         }
         await db.users.insert_one(user)
+    if payload.password and len(payload.password) >= 6:
+        await db.users.update_one({"id": user["id"]}, {"$set": {"password_hash": hash_password(payload.password)}})
 
     await db.otps.delete_one({"phone": phone})
     token = create_token(user["id"], user["role"])
