@@ -86,15 +86,13 @@ export default function AdminCodes() {
 
   const create = async (e) => {
     e.preventDefault();
-    if (totalCovered === 0) return toast.error("Set a ₹ discount for at least one product");
     setCreating(true);
     try {
       const r = await api.post("/admin/codes", {
         one_time: oneTime,
         product_discounts: discountsByPid,
       });
-      toast.success(`Code generated: ${r.data.code}`);
-      setDiscountsByPid({});
+      toast.success(`Code generated: ${r.data.code}${totalCovered === 0 ? " (₹0 off — access only)" : ""}`);
       load();
     } catch (e) {
       toast.error(formatError(e));
@@ -238,7 +236,7 @@ export default function AdminCodes() {
               <button
                 type="submit"
                 data-testid="admin-code-create"
-                disabled={creating || totalCovered === 0}
+                disabled={creating}
                 className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-slate-300"
               >
                 <Plus className="h-4 w-4" /> {creating ? "Generating…" : "Generate code"}

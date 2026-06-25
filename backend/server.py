@@ -484,10 +484,8 @@ def generate_access_code() -> str:
 
 @api.post("/admin/codes")
 async def create_code(payload: DiscountCodeIn, _: dict = Depends(require_admin)):
-    # Clean up product_discounts: drop zero/negative entries
+    # Allow empty product_discounts (access-only code, no discount)
     pd = {pid: float(amt) for pid, amt in payload.product_discounts.items() if amt and amt > 0}
-    if not pd:
-        raise HTTPException(status_code=400, detail="Set a discount for at least one product")
     # Auto-generate unique XXXX-XXXX-XXXX code
     code = generate_access_code()
     for _attempt in range(5):
