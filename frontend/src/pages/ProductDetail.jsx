@@ -19,6 +19,10 @@ export default function ProductDetail() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  const [imgIdx, setImgIdx] = useState(0);
+  const images = product?.images?.length ? product.images : (product?.image_url ? [product.image_url] : []);
+  useEffect(() => { setImgIdx(0); }, [product?.id]);
+
   if (loading) return <div className="grid min-h-[60vh] place-items-center text-slate-500">Loading…</div>;
   if (!product) return <div className="grid min-h-[60vh] place-items-center text-slate-500">Product not found</div>;
 
@@ -35,10 +39,30 @@ export default function ProductDetail() {
 
       <div className="mt-6 grid gap-10 lg:grid-cols-2">
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
-          {product.image_url ? (
-            <img src={product.image_url} alt={product.name} className="aspect-square w-full object-cover" />
+          {images.length > 0 ? (
+            <div className="relative">
+              <img src={images[imgIdx]} alt={product.name} className="aspect-square w-full object-cover" />
+              {images.length > 1 && (
+                <>
+                  <button onClick={() => setImgIdx((imgIdx - 1 + images.length) % images.length)} className="absolute left-3 top-1/2 -translate-y-1/2 grid h-10 w-10 place-items-center rounded-full bg-white/90 shadow-lg hover:bg-white"><ChevronLeft className="h-5 w-5"/></button>
+                  <button onClick={() => setImgIdx((imgIdx + 1) % images.length)} className="absolute right-3 top-1/2 -translate-y-1/2 grid h-10 w-10 place-items-center rounded-full bg-white/90 shadow-lg hover:bg-white"><ChevronLeft className="h-5 w-5 rotate-180"/></button>
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                    {images.map((_, i) => <button key={i} onClick={() => setImgIdx(i)} className={`h-2 rounded-full transition-all ${i===imgIdx?"w-6 bg-blue-600":"w-2 bg-white/80"}`}/>)}
+                  </div>
+                </>
+              )}
+            </div>
           ) : (
             <div className="grid aspect-square place-items-center text-slate-300">No image</div>
+          )}
+          {images.length > 1 && (
+            <div className="flex gap-2 p-3 overflow-x-auto no-scrollbar">
+              {images.map((img, i) => (
+                <button key={i} onClick={() => setImgIdx(i)} className={`flex-shrink-0 h-16 w-16 rounded-lg overflow-hidden border-2 ${i===imgIdx?"border-blue-600":"border-slate-200"}`}>
+                  <img src={img} alt="" className="h-full w-full object-cover"/>
+                </button>
+              ))}
+            </div>
           )}
         </div>
 

@@ -170,10 +170,51 @@ export default function AdminProducts() {
 
       {modal && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/50 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-auto rounded-2xl bg-white p-6 shadow-2xl">
             <h2 className="font-display text-xl font-bold text-slate-900">
               {modal === "new" ? "New product" : "Edit product"}
             </h2>
+            {modal !== "new" && (
+              <div className="mt-4">
+                <label className="text-xs font-semibold text-slate-700">Product images ({(modal.images||[]).length}/8)</label>
+                <div className="mt-2 grid grid-cols-4 gap-2">
+                  {(modal.images || []).map((img, idx) => (
+                    <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200">
+                      <img src={img} alt="" className="w-full h-full object-cover" />
+                      <button type="button" onClick={async () => {
+                        try {
+                          const r = await api.delete(`/admin/products/${modal.id}/images/${idx}`);
+                          setModal({...modal, images: r.data.images});
+                          toast.success("Image removed");
+                          load();
+                        } catch(e) { toast.error(formatError(e)); }
+                      }} className="absolute top-1 right-1 bg-rose-600 text-white rounded-full p-1 hover:bg-rose-700">
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                  {(modal.images || []).length < 8 && (
+                    <label className="aspect-square rounded-lg border-2 border-dashed border-slate-300 grid place-items-center cursor-pointer hover:border-blue-600 text-slate-400 hover:text-blue-600">
+                      <Plus className="h-6 w-6" />
+                      <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        const fd = new FormData();
+                        fd.append("file", f);
+                        try {
+                          const r = await api.post(`/admin/products/${modal.id}/images`, fd, { headers: {"Content-Type": "multipart/form-data"} });
+                          setModal({...modal, images: r.data.images});
+                          toast.success("Image uploaded");
+                          load();
+                        } catch(err) { toast.error(formatError(err)); }
+                        e.target.value = "";
+                      }} />
+                    </label>
+                  )}
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500">JPG/PNG/WEBP · max 5MB · first image = main thumbnail</p>
+              </div>
+            )}
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {[
                 ["name", "Name", "text", 2],

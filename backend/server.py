@@ -14,7 +14,8 @@ from typing import List, Optional, Annotated
 
 import bcrypt
 import jwt
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, UploadFile, File
+import base64
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
@@ -118,6 +119,7 @@ class ProductIn(BaseModel):
     mrp: Optional[float] = None
     description: Optional[str] = ""
     image_url: Optional[str] = ""
+    images: List[str] = Field(default_factory=list)
     stock: int = 100
     hidden: bool = False
     tags: List[str] = Field(default_factory=list)  # best-seller, new, featured
@@ -132,6 +134,7 @@ class ProductUpdate(BaseModel):
     mrp: Optional[float] = None
     description: Optional[str] = None
     image_url: Optional[str] = None
+    images: Optional[List[str]] = None
     stock: Optional[int] = None
     hidden: Optional[bool] = None
     tags: Optional[List[str]] = None
@@ -447,6 +450,42 @@ async def update_product(product_id: str, payload: ProductUpdate, _: dict = Depe
         raise HTTPException(status_code=404, detail="Product not found")
     p = await db.products.find_one({"id": product_id}, {"_id": 0})
     return p
+
+
+@api.post("/admin/products/{product_id}/images")
+async def upload_product_image(product_id: str, file: UploadFile = File(...), _: dict = Depends(require_admin)):
+    if file.content_type not in {"image/jpeg", "image/png", "image/webp", "image/jpg"}:
+        raise HTTPException(status_code=400, detail="Only JPG/PNG/WEBP allowed")
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Max 5MB per image")
+    data_url = f"data:{file.content_type};base64,{base64.b64encode(data).decode()}"
+    p = await db.products.find_one({"id": product_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Product not found")
+    images = p.get("images") or ([p["image_url"]] if p.get("image_url") else [])
+    if len(images) >= 8:
+        raise HTTPException(status_code=400, detail="Max 8 images per product")
+    images.append(data_url)
+    update = {"images": images}
+    if not p.get("image_url"):
+        update["image_url"] = images[0]
+    await db.products.update_one({"id": product_id}, {"$set": update})
+    return {"images": images}
+
+
+@api.delete("/admin/products/{product_id}/images/{idx}")
+async def delete_product_image(product_id: str, idx: int, _: dict = Depends(require_admin)):
+    p = await db.products.find_one({"id": product_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Product not found")
+    images = p.get("images") or ([p["image_url"]] if p.get("image_url") else [])
+    if idx < 0 or idx >= len(images):
+        raise HTTPException(status_code=400, detail="Invalid index")
+    images.pop(idx)
+    update = {"images": images, "image_url": images[0] if images else ""}
+    await db.products.update_one({"id": product_id}, {"$set": update})
+    return {"images": images}
 
 
 @api.delete("/admin/products/{product_id}")
