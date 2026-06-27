@@ -2,6 +2,6 @@
   "version": 2,
   "framework": "create-react-app",
   "buildCommand": "npm run build",
-  "installCommand": "npm install",
+  "installCommand": "npm ci --legacy-peer-deps",
   "outputDirectory": "build"
 }
