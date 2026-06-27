@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "buildCommand": "cd backend && pip install -r requirements.txt",
+  "env": {
+    "MONGO_URL": {
+      "description": "MongoDB connection string"
+    },
+    "DB_NAME": {
+      "description": "MongoDB database name"
+    },
+    "JWT_SECRET": {
+      "description": "JWT secret key for token generation"
+    },
+    "ADMIN_EMAIL": {
+      "description": "Admin email for initial setup"
+    },
+    "ADMIN_PASSWORD": {
+      "description": "Admin password for initial setup"
+    },
+    "ALLOWED_ORIGIN": {
+      "description": "CORS allowed origin (e.g., https://yourdomain.com)"
+    },
+    "EXPOSE_OTP": {
+      "description": "Expose OTP in API response (true=dev, false=prod)"
+    },
+    "RAZORPAY_KEY_ID": {
+      "description": "Razorpay Key ID (optional, for production)"
+    },
+    "RAZORPAY_KEY_SECRET": {
+      "description": "Razorpay Key Secret (optional, for production)"
+    }
+  }
+}
