@@ -9,8 +9,20 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get("/products").then((r) => setProducts(r.data)).finally(() => setLoading(false));
-  }, []);
+  api.get("/products")
+    .then((r) => {
+      console.log("API Response:", r.data);
+      console.log("Is Array:", Array.isArray(r.data));
+
+      setProducts(Array.isArray(r.data) ? r.data : []);
+    })
+    .catch((err) => {
+      console.error("Products API Error:", err);
+    })
+    .finally(() => {
+      setLoading(false);
+    });
+}, []);
 
   return (
     <div data-testid="home-page">
